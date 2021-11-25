@@ -24,14 +24,28 @@ impl fmt::Display for Identifier {
 }
 
 #[derive(Debug)]
+pub struct IntLiteral {
+    pub token: Token,
+    pub value: i64,
+}
+
+impl fmt::Display for IntLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Debug)]
 pub enum Expression {
-    Identifier(Identifier)
+    Identifier(Identifier),
+    Int(IntLiteral),
 }
 
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Expression::Identifier(expression) => fmt::Display::fmt(&expression, f),
+            Expression::Int(int_literal) => fmt::Display::fmt(&int_literal, f),
         }
     }
 }

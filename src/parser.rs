@@ -1,13 +1,29 @@
-use crate::ast::{Expression, Identifier};
+use std::collections::HashMap;
+
+use crate::ast::{Expression, Identifier, IntLiteral};
 use crate::ast::select_statement::SelectStatement;
-use crate::ast::statement::Statement;
+use crate::ast::statement::{ExpressionStatement, Statement};
 use crate::lexer::{Lexer, Token, TokenKind};
+
+enum Precedence {
+    Lowest = 1,
+    Equals,
+    LessGreater,
+    Sum,
+    Product,
+    Prefix,
+}
+
+type PrefixParser = fn(&mut Parser) -> Expression;
+type InfixParser = fn(&mut Parser, Expression) -> Expression;
 
 pub struct Parser {
     lexer: Lexer,
     current_token: Token,
     peek_token: Token,
     errors: Vec<String>,
+    prefix_parsers: HashMap<TokenKind, PrefixParser>,
+    infix_parsers: HashMap<TokenKind, InfixParser>,
 }
 
 // Parsing functions
@@ -15,8 +31,20 @@ impl Parser {
     pub fn parse_statement(&mut self) -> Option<Statement> {
         match self.current_token.kind {
             TokenKind::Select => self.parse_select_statement(),
-            _ => unimplemented!()
+            _ => self.parse_expression_statement(),
         }
+    }
+
+    fn parse_expression_statement(&mut self) -> Option<Statement> {
+        let token = self.current_token.clone();
+        let expression = self.parse_expression(Precedence::Lowest)?;
+        let statement = Statement::Expr(ExpressionStatement { token, expression });
+        Some(statement)
+    }
+
+    fn parse_expression(&mut self, precedence: Precedence) -> Option<Expression> {
+        let prefix = self.prefix_parsers.get(&self.current_token.kind)?;
+        Some(prefix(self))
     }
 
     fn parse_select_statement(&mut self) -> Option<Statement> {
@@ -72,16 +100,45 @@ impl Parser {
             value: self.current_token.literal.clone(),
         })
     }
+
+    fn parse_integer_literal(&mut self) -> Expression {
+        Expression::Int(IntLiteral {
+            token: self.current_token.clone(),
+            value: self.current_token.literal.parse().unwrap(),
+        })
+    }
 }
 
-// Helpers
+// Initializers
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
         let current_token = lexer.next_token();
         let peek_token = lexer.next_token();
-        Parser { lexer, current_token, peek_token, errors: vec![] }
+        let mut p = Parser {
+            lexer,
+            current_token,
+            peek_token,
+            errors: vec![],
+            prefix_parsers: Default::default(),
+            infix_parsers: Default::default(),
+        };
+
+        p.register_prefix(TokenKind::Identifier, Parser::parse_identifier);
+        p.register_prefix(TokenKind::Int, Parser::parse_integer_literal);
+        p
     }
 
+    fn register_prefix(&mut self, kind: TokenKind, prefix_parser: PrefixParser) {
+        self.prefix_parsers.insert(kind, prefix_parser);
+    }
+
+    fn register_infix(&mut self, kind: TokenKind, infix_parser: InfixParser) {
+        self.infix_parsers.insert(kind, infix_parser);
+    }
+}
+
+// Token Helpers
+impl Parser {
     fn next_token(&mut self) {
         self.current_token = self.peek_token.clone();
         self.peek_token = self.lexer.next_token();
@@ -120,8 +177,19 @@ mod tests {
     fn assert_identifier(s: &str, expression: &Expression) {
         match expression {
             Expression::Identifier(Identifier { value, .. }) => assert_eq!(value, s),
+            _ => panic!("{} is not an identifier", expression)
         }
     }
+
+    fn assert_int_literal(value: i64, expression: &Expression) {
+        if let Expression::Int(i) = expression {
+            assert_eq!(i.value, value);
+        } else {
+            panic!("{} is not an int literal", expression)
+        }
+    }
+
+    fn assert_expression<T>(t: T, expression: &Expression) {}
 
     fn assert_token(token: &Token, kind: TokenKind, literal: &str) {
         assert_eq!(token.kind, kind);
@@ -177,5 +245,26 @@ mod tests {
     fn parse_stringify_select() {
         let statement = parse("select name, age, gender from employee");
         assert_eq!("SELECT name, age, gender FROM employee", format!("{}", statement));
+    }
+
+    #[test]
+    fn parse_identifier() {
+        let statement = parse("somename;");
+        let expected = String::from("somename");
+        assert!(matches!(statement, Statement::Expr(ExpressionStatement {
+            expression: Expression::Identifier(Identifier {
+                value: expected, ..
+            }), ..
+        })));
+    }
+
+    #[test]
+    fn parse_int() {
+        let statement = parse("1234");
+        assert!(matches!(statement, Statement::Expr(ExpressionStatement {
+            expression: Expression::Int(IntLiteral {
+                value: 1234, ..
+            }), ..
+        })));
     }
 }

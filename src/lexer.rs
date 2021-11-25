@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
+#[derive(PartialOrd, PartialEq, Debug, Copy, Clone, Eq, Hash)]
 pub enum TokenKind {
     Illegal,
     Eof,
