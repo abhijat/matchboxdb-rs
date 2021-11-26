@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{Expression, Identifier, IntLiteral};
+use crate::ast::{Expression, Identifier, IntLiteral, PrefixExpression};
 use crate::ast::select_statement::SelectStatement;
 use crate::ast::statement::{ExpressionStatement, Statement};
 use crate::lexer::{Lexer, Token, TokenKind};
@@ -14,7 +14,7 @@ enum Precedence {
     Prefix,
 }
 
-type PrefixParser = fn(&mut Parser) -> Expression;
+type PrefixParser = fn(&mut Parser) -> Option<Expression>;
 type InfixParser = fn(&mut Parser, Expression) -> Expression;
 
 pub struct Parser {
@@ -44,7 +44,7 @@ impl Parser {
 
     fn parse_expression(&mut self, precedence: Precedence) -> Option<Expression> {
         let prefix = self.prefix_parsers.get(&self.current_token.kind)?;
-        Some(prefix(self))
+        prefix(self)
     }
 
     fn parse_select_statement(&mut self) -> Option<Statement> {
@@ -67,7 +67,7 @@ impl Parser {
             return None;
         }
 
-        let identifier = self.parse_identifier();
+        let identifier = self.parse_identifier()?;
         expressions.push(identifier);
 
         // keep collecting expressions until we run out of them
@@ -80,7 +80,7 @@ impl Parser {
                 return None;
             }
 
-            expressions.push(self.parse_identifier());
+            expressions.push(self.parse_identifier()?);
         }
 
         Some(expressions)
@@ -91,21 +91,34 @@ impl Parser {
             return None;
         }
 
-        Some(self.parse_identifier())
+        self.parse_identifier()
     }
 
-    fn parse_identifier(&mut self) -> Expression {
-        Expression::Identifier(Identifier {
+    fn parse_identifier(&mut self) -> Option<Expression> {
+        let identifier = Identifier {
             token: self.current_token.clone(),
             value: self.current_token.literal.clone(),
-        })
+        };
+        Some(Expression::Identifier(identifier))
     }
 
-    fn parse_integer_literal(&mut self) -> Expression {
-        Expression::Int(IntLiteral {
+    fn parse_integer_literal(&mut self) -> Option<Expression> {
+        let literal = IntLiteral {
             token: self.current_token.clone(),
-            value: self.current_token.literal.parse().unwrap(),
-        })
+            value: self.current_token.literal.parse().ok()?,
+        };
+        Some(Expression::Int(literal))
+    }
+
+    fn parse_prefix_expression(&mut self) -> Option<Expression> {
+        let token = self.current_token.clone();
+        let operator = token.literal.clone();
+
+        self.next_token();
+
+        let right = Box::new(self.parse_expression(Precedence::Prefix)?);
+        let prefix_expression = Expression::Prefixed(PrefixExpression { token, operator, right });
+        Some(prefix_expression)
     }
 }
 
@@ -125,6 +138,8 @@ impl Parser {
 
         p.register_prefix(TokenKind::Identifier, Parser::parse_identifier);
         p.register_prefix(TokenKind::Int, Parser::parse_integer_literal);
+        p.register_prefix(TokenKind::Bang, Parser::parse_prefix_expression);
+        p.register_prefix(TokenKind::Minus, Parser::parse_prefix_expression);
         p
     }
 
@@ -165,6 +180,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
+
+    use crate::lexer::TokenKind::Int;
+
     use super::*;
 
     fn parse(s: &str) -> Statement {
@@ -188,8 +207,6 @@ mod tests {
             panic!("{} is not an int literal", expression)
         }
     }
-
-    fn assert_expression<T>(t: T, expression: &Expression) {}
 
     fn assert_token(token: &Token, kind: TokenKind, literal: &str) {
         assert_eq!(token.kind, kind);
@@ -266,5 +283,32 @@ mod tests {
                 value: 1234, ..
             }), ..
         })));
+    }
+
+    fn extract_expression_statement(s: &Statement) -> &ExpressionStatement {
+        match s {
+            Statement::Expr(e) => e,
+            _ => panic!("{} is not an ExpressionStatement", s),
+        }
+    }
+
+    fn extract_prefix_expression(e: &ExpressionStatement) -> &PrefixExpression {
+        match &e.expression {
+            Expression::Prefixed(p) => p,
+            _ => panic!("{} is not a PrefixExpression", e),
+        }
+    }
+
+    #[test]
+    fn parse_prefix_expression() {
+        let statement = parse("!1");
+        let p = extract_prefix_expression(extract_expression_statement(&statement));
+        assert_eq!(p.operator, "!");
+        assert_int_literal(1, &p.right);
+
+        let statement = parse("-foobar");
+        let p = extract_prefix_expression(extract_expression_statement(&statement));
+        assert_eq!(p.operator, "-");
+        assert_identifier("foobar", &p.right);
     }
 }
