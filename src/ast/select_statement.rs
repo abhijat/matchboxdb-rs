@@ -1,7 +1,8 @@
 use std::fmt;
 use std::fmt::Formatter;
 
-use crate::ast::{Expression, Node};
+use crate::ast::expression::Expression;
+use crate::ast::Node;
 use crate::lexer::Token;
 
 #[derive(Debug)]

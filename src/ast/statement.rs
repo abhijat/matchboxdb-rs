@@ -1,7 +1,8 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
-use crate::ast::{Expression, Node};
+use crate::ast::expression::Expression;
+use crate::ast::Node;
 use crate::ast::select_statement::SelectStatement;
 use crate::lexer::Token;
 

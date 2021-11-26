@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::ast::{Expression, Identifier, IntLiteral, PrefixExpression};
+use crate::ast::expression::Expression;
+use crate::ast::identifier::Identifier;
+use crate::ast::int_literal::IntLiteral;
+use crate::ast::prefix_expression::PrefixExpression;
 use crate::ast::select_statement::SelectStatement;
 use crate::ast::statement::{ExpressionStatement, Statement};
 use crate::lexer::{Lexer, Token, TokenKind};
